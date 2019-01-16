@@ -1,4 +1,5 @@
 ## mako
+<%page expression_filter="h"/>
 <%! from django.utils.translation import ugettext as _ %>
 <%! from openedx.core.djangoapps.site_configuration import helpers as configuration_helpers %>
 ${_("Request to change {platform_name} account e-mail").format(
