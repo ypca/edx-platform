@@ -32,7 +32,6 @@ from course_modes.models import CourseMode
 from course_modes.tests.factories import CourseModeFactory
 from courseware.tests.factories import GlobalStaffFactory
 from lms.djangoapps.grades.tests.utils import mock_passing_grade
-from microsite_configuration import microsite
 from openedx.core.lib.tests import attr
 from student.models import CourseEnrollment
 from student.tests.factories import UserFactory
@@ -742,29 +741,6 @@ class GenerateExampleCertificatesTest(TestCase):
         self.assertEqual(list(expected_statuses), actual_status)
 
 
-def set_microsite(domain):
-    """
-    returns a decorator that can be used on a test_case to set a specific microsite for the current test case.
-    :param domain: Domain of the new microsite
-    """
-    def decorator(func):
-        """
-        Decorator to set current microsite according to domain
-        """
-        @wraps(func)
-        def inner(request, *args, **kwargs):
-            """
-            Execute the function after setting up the microsite.
-            """
-            try:
-                microsite.set_by_domain(domain)
-                return func(request, *args, **kwargs)
-            finally:
-                microsite.clear()
-        return inner
-    return decorator
-
-
 @override_settings(FEATURES=FEATURES_WITH_CERTS_ENABLED)
 @attr(shard=1)
 class CertificatesBrandingTest(TestCase):
@@ -772,7 +748,6 @@ class CertificatesBrandingTest(TestCase):
 
     COURSE_KEY = CourseLocator(org='test', course='test', run='test')
 
-    @set_microsite(settings.MICROSITE_CONFIGURATION['test_site']['domain_prefix'])
     def test_certificate_header_data(self):
         """
         Test that get_certificate_header_context from lms.djangoapps.certificates api
@@ -787,17 +762,7 @@ class CertificatesBrandingTest(TestCase):
             data.keys(),
             ['logo_src', 'logo_url']
         )
-        self.assertIn(
-            settings.MICROSITE_CONFIGURATION['test_site']['logo_image_url'],
-            data['logo_src']
-        )
 
-        self.assertIn(
-            settings.MICROSITE_CONFIGURATION['test_site']['SITE_NAME'],
-            data['logo_url']
-        )
-
-    @set_microsite(settings.MICROSITE_CONFIGURATION['test_site']['domain_prefix'])
     def test_certificate_footer_data(self):
         """
         Test that get_certificate_footer_context from lms.djangoapps.certificates api returns
@@ -811,23 +776,4 @@ class CertificatesBrandingTest(TestCase):
         self.assertItemsEqual(
             data.keys(),
             ['company_about_url', 'company_privacy_url', 'company_tos_url']
-        )
-
-        # ABOUT is present in MICROSITE_CONFIGURATION['test_site']["urls"] so web certificate will use that url
-        self.assertIn(
-            settings.MICROSITE_CONFIGURATION['test_site']["urls"]['ABOUT'],
-            data['company_about_url']
-        )
-
-        # PRIVACY is present in MICROSITE_CONFIGURATION['test_site']["urls"] so web certificate will use that url
-        self.assertIn(
-            settings.MICROSITE_CONFIGURATION['test_site']["urls"]['PRIVACY'],
-            data['company_privacy_url']
-        )
-
-        # TOS_AND_HONOR is present in MICROSITE_CONFIGURATION['test_site']["urls"],
-        # so web certificate will use that url
-        self.assertIn(
-            settings.MICROSITE_CONFIGURATION['test_site']["urls"]['TOS_AND_HONOR'],
-            data['company_tos_url']
         )
