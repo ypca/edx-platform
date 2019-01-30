@@ -12,14 +12,11 @@ import subprocess
 
 import mongoengine
 from django.conf import settings
-from django.contrib.auth import authenticate
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.core.exceptions import PermissionDenied
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.db import IntegrityError
 from django.http import Http404, HttpResponse
-from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.html import escape
 from django.utils.translation import ugettext as _
@@ -37,8 +34,7 @@ from courseware.courses import get_course_by_id
 from dashboard.git_import import GitImportError
 from dashboard.models import CourseImportLog
 from edxmako.shortcuts import render_to_response
-from openedx.core.djangoapps.external_auth.models import ExternalAuthMap
-from openedx.core.djangoapps.user_api.accounts.utils import generate_password
+from openedx.core.djangolib.markup import HTML
 from student.models import CourseEnrollment, Registration, UserProfile
 from student.roles import CourseInstructorRole, CourseStaffRole
 from xmodule.modulestore.django import modulestore
@@ -114,82 +110,24 @@ class Users(SysadminDashboardView):
     courses loaded, and user statistics
     """
 
-    def fix_external_auth_map_passwords(self):
-        """
-        This corrects any passwords that have drifted from eamap to
-        internal django auth.  Needs to be removed when fixed in external_auth
-        """
-
-        msg = ''
-        for eamap in ExternalAuthMap.objects.all():
-            euser = eamap.user
-            epass = eamap.internal_password
-            if euser is None:
-                continue
-            try:
-                testuser = authenticate(username=euser.username, password=epass)
-            except (TypeError, PermissionDenied, AttributeError) as err:
-                # Translators: This message means that the user could not be authenticated (that is, we could
-                # not log them in for some reason - maybe they don't have permission, or their password was wrong)
-                msg += _('Failed in authenticating {username}, error {error}\n').format(
-                    username=euser,
-                    error=err
-                )
-                continue
-            if testuser is None:
-                # Translators: This message means that the user could not be authenticated (that is, we could
-                # not log them in for some reason - maybe they don't have permission, or their password was wrong)
-                msg += _('Failed in authenticating {username}\n').format(username=euser)
-                # Translators: this means that the password has been corrected (sometimes the database needs to be resynchronized)
-                # Translate this as meaning "the password was fixed" or "the password was corrected".
-                msg += _('fixed password')
-                euser.set_password(epass)
-                euser.save()
-                continue
-        if not msg:
-            # Translators: this means everything happened successfully, yay!
-            msg = _('All ok!')
-        return msg
-
     def create_user(self, uname, name, password=None):
-        """ Creates a user (both SSL and regular)"""
+        """ Creates a user """
 
         if not uname:
             return _('Must provide username')
         if not name:
             return _('Must provide full name')
 
-        email_domain = getattr(settings, 'SSL_AUTH_EMAIL_DOMAIN', 'MIT.EDU')
-
         msg = u''
-        if settings.FEATURES['AUTH_USE_CERTIFICATES']:
-            if '@' not in uname:
-                email = '{0}@{1}'.format(uname, email_domain)
-            else:
-                email = uname
-            if not email.endswith('@{0}'.format(email_domain)):
-                # Translators: Domain is an email domain, such as "@gmail.com"
-                msg += _('Email address must end in {domain}').format(domain="@{0}".format(email_domain))
-                return msg
-            mit_domain = 'ssl:MIT'
-            if ExternalAuthMap.objects.filter(external_id=email,
-                                              external_domain=mit_domain):
-                msg += _('Failed - email {email_addr} already exists as {external_id}').format(
-                    email_addr=email,
-                    external_id="external_id"
-                )
-                return msg
-            new_password = generate_password()
-        else:
-            if not password:
-                return _('Password must be supplied if not using certificates')
+        if not password:
+            return _('Password must be supplied')
 
-            email = uname
+        email = uname
 
-            if '@' not in email:
-                msg += _('email address required (not username)')
-                return msg
-            new_password = password
+        if '@' not in email:
+            msg += _('email address required (not username)')
+            return msg
+        new_password = password
 
         user = User(username=uname, email=email, is_active=True)
         user.set_password(new_password)
@@ -208,22 +146,6 @@ class Users(SysadminDashboardView):
         profile = UserProfile(user=user)
         profile.name = name
         profile.save()
-
-        if settings.FEATURES['AUTH_USE_CERTIFICATES']:
-            credential_string = getattr(settings, 'SSL_AUTH_DN_FORMAT_STRING',
-                                        '/C=US/ST=Massachusetts/O=Massachusetts Institute of Technology/OU=Client CA v1/CN={0}/emailAddress={1}')
-            credentials = credential_string.format(name, email)
-            eamap = ExternalAuthMap(
-                external_id=email,
-                external_email=email,
-                external_domain=mit_domain,
-                external_name=name,
-                internal_password=new_password,
-                external_credentials=json.dumps(credentials),
-            )
-            eamap.user = user
-            eamap.dtsignup = timezone.now()
-            eamap.save()
 
         msg += _('User {user} created successfully!').format(user=user)
         return msg
@@ -261,12 +183,12 @@ class Users(SysadminDashboardView):
         self.datatable['data'] = [[_('Total number of users'),
                                    User.objects.all().count()]]
 
-        self.msg += u'<h2>{0}</h2>'.format(
+        self.msg += HTML(u'<h2>{0}</h2>').format(
             _('Courses loaded in the modulestore')
         )
         self.msg += u'<ol>'
         for course in self.get_courses():
-            self.msg += u'<li>{0} ({1})</li>'.format(
+            self.msg += HTML(u'<li>{0} ({1})</li>').format(
                 escape(text_type(course.id)), text_type(course.location))
         self.msg += u'</ol>'
 
@@ -302,22 +224,16 @@ class Users(SysadminDashboardView):
                     (User.objects.all().iterator()))
             return self.return_csv('users_{0}.csv'.format(
                 request.META['SERVER_NAME']), header, data)
-        elif action == 'repair_eamap':
-            self.msg = u'<h4>{0}</h4><pre>{1}</pre>{2}'.format(
-                _('Repair Results'),
-                self.fix_external_auth_map_passwords(),
-                self.msg)
-            self.datatable = {}
         elif action == 'create_user':
             uname = request.POST.get('student_uname', '').strip()
             name = request.POST.get('student_fullname', '').strip()
             password = request.POST.get('student_password', '').strip()
-            self.msg = u'<h4>{0}</h4><p>{1}</p><hr />{2}'.format(
+            self.msg = HTML(u'<h4>{0}</h4><p>{1}</p><hr />{2}').format(
                 _('Create User Results'),
                 self.create_user(uname, name, password), self.msg)
         elif action == 'del_user':
             uname = request.POST.get('student_uname', '').strip()
-            self.msg = u'<h4>{0}</h4><p>{1}</p><hr />{2}'.format(
+            self.msg = HTML(u'<h4>{0}</h4><p>{1}</p><hr />{2}').format(
                 _('Delete User Results'), self.delete_user(uname), self.msg)
 
         context = {
@@ -418,8 +334,8 @@ class Courses(SysadminDashboardView):
             msg_header = _('Added Course')
             color = 'blue'
 
-        msg = u"<h4 style='color:{0}'>{1}</h4>".format(color, msg_header)
-        msg += u"<pre>{0}</pre>".format(escape(ret))
+        msg = HTML(u"<h4 style='color:{0}'>{1}</h4>").format(color, msg_header)
+        msg += HTML(u"<pre>{0}</pre>").format(escape(ret))
         return msg
 
     def make_datatable(self):
@@ -485,7 +401,7 @@ class Courses(SysadminDashboardView):
                     course_found = True
                 except Exception as err:   # pylint: disable=broad-except
                     self.msg += _(
-                        'Error - cannot get course with ID {0}<br/><pre>{1}</pre>'
+                        HTML('Error - cannot get course with ID {0}<br/><pre>{1}</pre>')
                     ).format(
                         course_key,
                         escape(str(err))
@@ -496,7 +412,7 @@ class Courses(SysadminDashboardView):
                 self.def_ms.delete_course(course.id, request.user.id)
                 # don't delete user permission groups, though
                 self.msg += \
-                    u"<font color='red'>{0} {1} = {2} ({3})</font>".format(
+                    HTML(u"<font color='red'>{0} {1} = {2} ({3})</font>").format(
                         _('Deleted'), text_type(course.location), text_type(course.id), course.display_name)
 
         context = {
