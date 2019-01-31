@@ -14,6 +14,7 @@ the marketing site and blog).
 """
 import logging
 import urlparse
+from collections import OrderedDict
 
 from django.conf import settings
 from django.contrib.staticfiles.storage import staticfiles_storage
@@ -34,7 +35,7 @@ def is_enabled():
     return BrandingApiConfig.current().enabled
 
 
-def get_footer(is_secure=True):
+def get_footer(is_secure=True, language='en'):
     """Retrieve information used to render the footer.
 
     This will handle both the Open edX and edX.org versions
@@ -99,13 +100,13 @@ def get_footer(is_secure=True):
         "copyright": _footer_copyright(),
         "logo_image": _footer_logo_img(is_secure),
         "social_links": _footer_social_links(),
-        "business_links": _footer_business_links(),
+        "business_links": _footer_business_links(language),
         "mobile_links": _footer_mobile_links(is_secure),
-        "more_info_links": _footer_more_info_links(),
-        "connect_links": _footer_connect_links(),
+        "more_info_links": _footer_more_info_links(language),
+        "connect_links": _footer_connect_links(language),
         "openedx_link": _footer_openedx_link(),
-        "navigation_links": _footer_navigation_links(),
-        "legal_links": _footer_legal_links(),
+        "navigation_links": _footer_navigation_links(language),
+        "legal_links": _footer_legal_links(language),
         "edx_org_link": {
             "url": "https://www.edx.org/?utm_medium=affiliate_partner&utm_source=opensource-partner&utm_content=open-edx-partner-footer-link&utm_campaign=open-edx-footer",
             "text": _("Take free online courses at edX.org"),
@@ -170,8 +171,19 @@ def _footer_social_links():
     return links
 
 
-def _footer_connect_links():
+def _footer_connect_links(language="en"):
     """Return the connect links to display in the footer. """
+    links = OrderedDict([
+        ("blog", (marketing_link("BLOG"), _("Blog"))),
+        ("contact", (_build_support_form_url(), _("Contact Us"))),
+        ("help-center", (settings.SUPPORT_SITE_LINK, _("Help Center"))),
+        ("media_kit", (marketing_link("MEDIA_KIT"), _("Media Kit"))),
+        ("donate", (marketing_link("DONATE"), _("Donate"))),
+        ])
+
+    if language.startswith("es"):
+        del links["media_kit"]
+        del links["donate"]
 
     return [
         {
@@ -179,13 +191,7 @@ def _footer_connect_links():
             "title": link_title,
             "url": link_url,
         }
-        for link_name, link_url, link_title in [
-            ("blog", marketing_link("BLOG"), _("Blog")),
-            ("contact", _build_support_form_url(), _("Contact Us")),
-            ("help-center", settings.SUPPORT_SITE_LINK, _("Help Center")),
-            ("media_kit", marketing_link("MEDIA_KIT"), _("Media Kit")),
-            ("donate", marketing_link("DONATE"), _("Donate")),
-        ]
+        for link_name, (link_url, link_title) in links.items()
         if link_url and link_url != "#"
     ]
 
@@ -194,39 +200,43 @@ def _build_support_form_url():
     return '{base_url}/support/contact_us'.format(base_url=settings.LMS_ROOT_URL)
 
 
-def _footer_navigation_links():
+def _footer_navigation_links(language="en"):
     """Return the navigation links to display in the footer. """
     platform_name = configuration_helpers.get_value('platform_name', settings.PLATFORM_NAME)
+    links = OrderedDict([
+        ("about", (marketing_link("ABOUT"), _("About"))),
+        ("enterprise", (marketing_link("ENTERPRISE"),
+        _("{platform_name} for Business").format(platform_name=platform_name))),
+        ("blog", (marketing_link("BLOG"), _("Blog"))),
+        ("news", (marketing_link("NEWS"), _("News"))),
+        ("help-center", (settings.SUPPORT_SITE_LINK, _("Help Center"))),
+        ("contact", (reverse("support:contact_us"), _("Contact"))),
+        ("careers", (marketing_link("CAREERS"), _("Careers"))),
+        ("donate", (marketing_link("DONATE"), _("Donate"))),
+    ])
+    if language.startswith("es"):
+        del links["news"]
+
     return [
         {
             "name": link_name,
             "title": link_title,
             "url": link_url,
         }
-        for link_name, link_url, link_title in [
-            ("about", marketing_link("ABOUT"), _("About")),
-            ("enterprise", marketing_link("ENTERPRISE"),
-             _("{platform_name} for Business").format(platform_name=platform_name)),
-            ("blog", marketing_link("BLOG"), _("Blog")),
-            ("news", marketing_link("NEWS"), _("News")),
-            ("help-center", settings.SUPPORT_SITE_LINK, _("Help Center")),
-            ("contact", reverse("support:contact_us"), _("Contact")),
-            ("careers", marketing_link("CAREERS"), _("Careers")),
-            ("donate", marketing_link("DONATE"), _("Donate")),
-        ]
+        for link_name, (link_url, link_title) in links.items()
         if link_url and link_url != "#"
     ]
 
 
-def _footer_legal_links():
+def _footer_legal_links(language="en"):
     """Return the legal footer links (e.g. terms of service). """
 
     links = [
-        ("terms_of_service_and_honor_code", marketing_link("TOS_AND_HONOR"), _("Terms of Service & Honor Code")),
-        ("privacy_policy", marketing_link("PRIVACY"), _("Privacy Policy")),
-        ("accessibility_policy", marketing_link("ACCESSIBILITY"), _("Accessibility Policy")),
-        ("sitemap", marketing_link("SITE_MAP"), _("Sitemap")),
-        ("media_kit", marketing_link("MEDIA_KIT"), _("Media Kit")),
+        ("terms_of_service_and_honor_code", (marketing_link("TOS_AND_HONOR"), _("Terms of Service & Honor Code"))),
+        ("privacy_policy", (marketing_link("PRIVACY"), _("Privacy Policy"))),
+        ("accessibility_policy", (marketing_link("ACCESSIBILITY"), _("Accessibility Policy"))),
+        ("sitemap", (marketing_link("SITE_MAP"), _("Sitemap"))),
+        ("media_kit", (marketing_link("MEDIA_KIT"), _("Media Kit"))),
     ]
 
     # Backwards compatibility: If a combined "terms of service and honor code"
@@ -234,24 +244,42 @@ def _footer_legal_links():
     tos_and_honor_link = marketing_link("TOS_AND_HONOR")
     if not (tos_and_honor_link and tos_and_honor_link != "#"):
         links.extend([
-            ("terms_of_service", marketing_link("TOS"), _("Terms of Service")),
-            ("honor_code", marketing_link("HONOR"), _("Honor Code")),
+            ("terms_of_service", (marketing_link("TOS"), _("Terms of Service"))),
+            ("honor_code", (marketing_link("HONOR"), _("Honor Code"))),
         ])
 
+    links = OrderedDict(links)
+    if language.startswith("es"):
+        del links["sitemap"]
+
     return [
         {
             "name": link_name,
             "title": link_title,
             "url": link_url,
         }
-        for link_name, link_url, link_title in links
+        for link_name, (link_url, link_title) in links.items()
         if link_url and link_url != "#"
     ]
 
 
-def _footer_business_links():
+def _footer_business_links(language="en"):
     """Return the business links to display in the footer. """
     platform_name = configuration_helpers.get_value('platform_name', settings.PLATFORM_NAME)
+    links = OrderedDict([
+        ("about", (marketing_link("ABOUT"), _("About"))),
+        ("enterprise", (marketing_link("ENTERPRISE"),
+         _("{platform_name} for Business").format(platform_name=platform_name))),
+        ("affiliates", (marketing_link("AFFILIATES"), _("Affiliates"))),
+        ("openedx", (_footer_openedx_link()["url"], _("Open edX"))),
+        ("careers", (marketing_link("CAREERS"), _("Careers"))),
+        ("news", (marketing_link("NEWS"), _("News"))),
+    ])
+
+    if language.startswith("es"):
+        del links["affiliates"]
+        del links["openedx"]
+        del links["careers"]
 
     return [
         {
@@ -259,28 +287,20 @@ def _footer_business_links():
             "title": link_title,
             "url": link_url,
         }
-        for link_name, link_url, link_title in [
-            ("about", marketing_link("ABOUT"), _("About")),
-            ("enterprise", marketing_link("ENTERPRISE"),
-             _("{platform_name} for Business").format(platform_name=platform_name)),
-            ("affiliates", marketing_link("AFFILIATES"), _("Affiliates")),
-            ("openedx", _footer_openedx_link()["url"], _("Open edX")),
-            ("careers", marketing_link("CAREERS"), _("Careers")),
-            ("news", marketing_link("NEWS"), _("News")),
-        ]
+        for link_name, (link_url, link_title) in links.items()
         if link_url and link_url != "#"
     ]
 
 
-def _footer_more_info_links():
+def _footer_more_info_links(language="en"):
     """Return the More Information footer links (e.g. terms of service). """
 
     links = [
-        ("terms_of_service_and_honor_code", marketing_link("TOS_AND_HONOR"), _("Terms of Service & Honor Code")),
-        ("privacy_policy", marketing_link("PRIVACY"), _("Privacy Policy")),
-        ("accessibility_policy", marketing_link("ACCESSIBILITY"), _("Accessibility Policy")),
-        ("trademarks", marketing_link("TRADEMARKS"), _("Trademark Policy")),
-        ("sitemap", marketing_link("SITE_MAP"), _("Sitemap")),
+        ("terms_of_service_and_honor_code", (marketing_link("TOS_AND_HONOR"), _("Terms of Service & Honor Code"))),
+        ("privacy_policy", (marketing_link("PRIVACY"), _("Privacy Policy"))),
+        ("accessibility_policy", (marketing_link("ACCESSIBILITY"), _("Accessibility Policy"))),
+        ("trademarks", (marketing_link("TRADEMARKS"), _("Trademark Policy"))),
+        ("sitemap", (marketing_link("SITE_MAP"), _("Sitemap"))),
     ]
 
     # Backwards compatibility: If a combined "terms of service and honor code"
@@ -288,9 +308,12 @@ def _footer_more_info_links():
     tos_and_honor_link = marketing_link("TOS_AND_HONOR")
     if not (tos_and_honor_link and tos_and_honor_link != "#"):
         links.extend([
-            ("terms_of_service", marketing_link("TOS"), _("Terms of Service")),
-            ("honor_code", marketing_link("HONOR"), _("Honor Code")),
+            ("terms_of_service", (marketing_link("TOS"), _("Terms of Service"))),
+            ("honor_code", (marketing_link("HONOR"), _("Honor Code"))),
         ])
+    links = OrderedDict(links)
+    if language.startswith("es"):
+        del links["trademarks"]
 
     return [
         {
@@ -298,7 +321,7 @@ def _footer_more_info_links():
             "title": link_title,
             "url": link_url,
         }
-        for link_name, link_url, link_title in links
+        for link_name, (link_url, link_title) in links.items()
         if link_url and link_url != "#"
     ]
 
