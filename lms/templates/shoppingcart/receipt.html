@@ -55,7 +55,7 @@ from openedx.core.lib.courses import course_image_url
               course_names=escape(appended_course_names)
             )
           )}
-          ${_("The following receipt has been emailed to {receipient_emails}").format(
+          ${_(u"The following receipt has been emailed to {receipient_emails}").format(
             receipient_emails=u"<strong>{receipient_emails}</strong>".format(
               receipient_emails=appended_recipient_emails,
             )
