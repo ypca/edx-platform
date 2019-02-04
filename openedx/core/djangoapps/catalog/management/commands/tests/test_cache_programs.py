@@ -16,6 +16,7 @@ from openedx.core.djangoapps.site_configuration.tests.mixins import SiteMixin
 from openedx.core.djangolib.testing.utils import CacheIsolationTestCase, skip_unless_lms
 from student.tests.factories import UserFactory
 
+from xmodule.modulestore.tests.factories import CourseFactory
 
 @skip_unless_lms
 @httpretty.activate
@@ -39,9 +40,11 @@ class TestCachePrograms(CatalogIntegrationMixin, CacheIsolationTestCase, SiteMix
         self.list_url = self.catalog_integration.get_internal_api_url().rstrip('/') + '/programs/'
         self.detail_tpl = self.list_url.rstrip('/') + '/{uuid}/'
         self.pathway_url = self.catalog_integration.get_internal_api_url().rstrip('/') + '/pathways/'
+        self.course_run_url = self.catalog_integration.get_internal_api_url().rstrip('/') + '/course_runs/'
 
         self.programs = ProgramFactory.create_batch(3)
         self.pathways = PathwayFactory.create_batch(3)
+        self.course_runs = CourseFactory.create_batch(3) # Emma I probably want to attach it to a program, right?
 
         for pathway in self.pathways:
             self.programs += pathway['programs']
@@ -121,6 +124,37 @@ class TestCachePrograms(CatalogIntegrationMixin, CacheIsolationTestCase, SiteMix
             content_type='application/json',
         )
 
+    def mock_courses(self, course_runs, page_number=1, final=True):
+        """
+        Mock the data for discovery's course_run endpoint
+        """
+        def course_run_callback(request, uri, headers):  # pylint: disable=unused-argument
+            """
+            Mocks response
+            """
+
+            expected = {
+                'exclude_utm': ['1'],
+                'page': [str(page_number)],
+            }
+            self.assertEqual(request.querystring, expected)
+
+            body = {
+                'count': len(course_runs),
+                'next': None if final else 'more',  # we don't actually parse this value
+                'prev': None,
+                'results': course_runs
+            }
+
+        return (200, headers, json.dumps(body))
+
+        httpretty.register_uri(
+            httpretty.GET,
+            self.course_run_url,
+            body=course_run_callback,
+            content_type='application/json',
+        )
+
     def test_handle_programs(self):
         """
         Verify that the command requests and caches program UUIDs and details.
@@ -137,6 +171,7 @@ class TestCachePrograms(CatalogIntegrationMixin, CacheIsolationTestCase, SiteMix
 
         self.mock_list()
         self.mock_pathways(self.pathways)
+        self.mock_courses(self.course_runs)
 
         for uuid in self.uuids:
             program = programs[PROGRAM_CACHE_KEY_TPL.format(uuid=uuid)]
@@ -184,6 +219,7 @@ class TestCachePrograms(CatalogIntegrationMixin, CacheIsolationTestCase, SiteMix
 
         self.mock_list()
         self.mock_pathways(self.pathways)
+        self.mock_courses(self.course_runs)
 
         for uuid in self.uuids:
             program = programs[PROGRAM_CACHE_KEY_TPL.format(uuid=uuid)]
@@ -230,6 +266,7 @@ class TestCachePrograms(CatalogIntegrationMixin, CacheIsolationTestCase, SiteMix
         }
 
         self.mock_list()
+        self.mock_courses(self.course_runs)
         for uuid in self.uuids:
             program = programs[PROGRAM_CACHE_KEY_TPL.format(uuid=uuid)]
             self.mock_detail(uuid, program)
@@ -268,6 +305,98 @@ class TestCachePrograms(CatalogIntegrationMixin, CacheIsolationTestCase, SiteMix
             del pathways_dict[key]['programs']
 
             self.assertEqual(pathway, pathways_dict[key])
+
+    
+    def test_handle_courses(self):
+        """
+        Verify that the command requests and caches course to program uuids
+        """
+
+        UserFactory(username=self.catalog_integration.service_username)
+
+        programs = {
+            PROGRAM_CACHE_KEY_TPL.format(uuid=program['uuid']): program for program in self.programs
+        }
+
+        pathways = {
+            PATHWAY_CACHE_KEY_TPL.format(id=pathway['id']): pathway for pathway in self.pathways
+        }
+
+        courses = {
+            COURSE_PROGRAMS_CACHE_KEY_TPL.format(course_run_id=course['id']):
+            [pu['uuid'] for pu in course['programs']]
+            for course in self.course_runs
+        }
+
+        self.mock_list()
+        self.mock_pathways(self.pathways)
+        self.mock_courses(self.course_runs)
+
+        for uuid in self.uuids:
+            program = programs[PROGRAM_CACHE_KEY_TPL.format(uuid=uuid)]
+            self.mock_detail(uuid, program)
+
+        call_command('cache_programs')
+
+        cached_courses = cache.get_many(list(courses.keys()))
+        self.assertEqual(
+            set(cached_course),
+            set(courses)
+        )
+
+        # We can't use a set comparison here because these values are dictionaries
+        # and aren't hashable. We've already verified that all pathways came out
+        # of the cache above, so all we need to do here is verify the accuracy of
+        # the data itself.
+        for key, course in cached_courses.items():
+            self.assertEqual(course, course_runs[key])
+
+    def test_handle_multiple_courses(self):
+        """
+        Verify that the command requests and caches course to program uuids
+        """
+
+        UserFactory(username=self.catalog_integration.service_username)
+
+        programs = {
+            PROGRAM_CACHE_KEY_TPL.format(uuid=program['uuid']): program for program in self.programs
+        }
+
+        pathways = {
+            PATHWAY_CACHE_KEY_TPL.format(id=pathway['id']): pathway for pathway in self.pathways
+        }
+
+        courses = {
+            COURSE_PROGRAMS_CACHE_KEY_TPL.format(course_run_id=course['id']):
+            [pu['uuid'] for pu in course['programs']]
+            for course in self.course_runs
+        }
+
+        self.mock_list()
+        self.mock_pathways(self.pathways)
+        # mock 3 pages of course_runs, starting at the last
+        self.mock_courses(courses[40:], page_number=3, final=True)
+        self.mock_courses(courses[20:40], page_number=2, final=False) #Emma: there won't be 40...
+        self.mock_courses(courses[:20], page_number=1, final=False)
+
+        for uuid in self.uuids:
+            program = programs[PROGRAM_CACHE_KEY_TPL.format(uuid=uuid)]
+            self.mock_detail(uuid, program)
+
+        call_command('cache_programs')
+
+        cached_courses = cache.get_many(list(courses.keys()))
+        self.assertEqual(
+            set(cached_course),
+            set(courses)
+        )
+
+        # We can't use a set comparison here because these values are dictionaries
+        # and aren't hashable. We've already verified that all pathways came out
+        # of the cache above, so all we need to do here is verify the accuracy of
+        # the data itself.
+        for key, course in cached_courses.items():
+            self.assertEqual(course, course_runs[key])
 
     def test_handle_missing_service_user(self):
         """
@@ -361,3 +490,41 @@ class TestCachePrograms(CatalogIntegrationMixin, CacheIsolationTestCase, SiteMix
             # cached programs have a pathways field added to them, remove before comparing
             del program['pathway_ids']
             self.assertEqual(program, partial_programs[key])
+
+    def test_handle_missing_course_runs(self):
+        """
+        Verify that a problem retrieving a course run doesn't prevent the command
+        from retrieving and caching other course runs, but does cause it to exit
+        with a non-zero exit code.
+        """
+        UserFactory(username=self.catalog_integration.service_username)
+
+        all_courses = {
+            COURSE_PROGRAMS_CACHE_KEY_TPL.format(course_run_id=course['id']):
+            [pu['uuid'] for pu in course['programs']]
+            for course in self.course_runs
+        }
+
+        partial_courses = {
+            COURSE_PROGRAMS_CACHE_KEY_TPL.format(course_run_id=course['id']):
+            [pu['uuid'] for pu in course['programs']]
+            for course in self.course_runs[:2]
+        }
+
+        self.mock_list()
+
+        with self.assertRaises(SystemExit) as context:
+            call_command('cache_programs')
+
+        self.assertEqual(context.exception.code, 1)
+
+        course_keys = list(all_courses.keys())
+        cached_courses = cache.get_many(course_keys)
+        # One of the cache keys should result in a cache miss.
+        self.assertEqual(
+            set(cached_courses),
+            set(partial_courses)
+        )
+
+        for key, course in cached_courses.items():
+            self.assertEqual(course, partial_courses[key])
