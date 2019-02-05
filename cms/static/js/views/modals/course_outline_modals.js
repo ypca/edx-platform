@@ -414,10 +414,10 @@ define(['jquery', 'backbone', 'underscore', 'gettext', 'js/views/baseview',
         className: 'edit-settings-timed-examination',
         events: {
             'change input.no_special_exam': 'notTimedExam',
-            'change input.timed_exam': 'setTimedExam',
-            'change input.practice_exam': 'setPracticeExam',
+            'change input.timed_exam': 'setSpecialExamWithoutRules',
+            'change input.practice_exam': 'setSpecialExamWithoutRules',
             'change input.proctored_exam': 'setProctoredExam',
-            'change input.onboarding_exam': 'setOnboardingExam',
+            'change input.onboarding_exam': 'setSpecialExamWithoutRules',
             'focusout .field-time-limit input': 'timeLimitFocusout'
         },
         notTimedExam: function(event) {
@@ -437,21 +437,13 @@ define(['jquery', 'backbone', 'underscore', 'gettext', 'js/views/baseview',
                 this.$('.field-exam-review-rules').hide();
             }
         },
-        setTimedExam: function(event) {
-            event.preventDefault();
-            this.selectSpecialExam(false);
-        },
-        setPracticeExam: function(event) {
+        setSpecialExamWithoutRules: function(event) {
             event.preventDefault();
             this.selectSpecialExam(false);
         },
         setProctoredExam: function(event) {
             event.preventDefault();
             this.selectSpecialExam(true);
-        },
-        setOnboardingExam: function(event) {
-            event.preventDefault();
-            this.selectSpecialExam(false);
         },
         timeLimitFocusout: function(event) {
             var selectedTimeLimit;
@@ -531,53 +523,26 @@ define(['jquery', 'backbone', 'underscore', 'gettext', 'js/views/baseview',
             return totalTime;
         },
         getRequestData: function() {
-            var isTimeLimited;
-            var isPracticeExam;
-            var isProctoredExam;
-            var isOnboardingExam;
+            var isNoSpecialExamChecked = this.$('input.no_special_exam').is(':checked');
+            var isProctoredExamChecked = this.$('input.proctored_exam').is(':checked');
+            var isPracticeExamChecked = this.$('input.practice_exam').is(':checked');
+            var isOnboardingExamChecked = this.$('input.onboarding_exam').is(':checked');
             var timeLimit = this.getExamTimeLimit();
             var examReviewRules = this.$('.field-exam-review-rules textarea').val();
 
-            if (this.$('input.no_special_exam').is(':checked')) {
-                isTimeLimited = false;
-                isPracticeExam = false;
-                isProctoredExam = false;
-                isOnboardingExam = false;
-            } else if (this.$('input.timed_exam').is(':checked')) {
-                isTimeLimited = true;
-                isPracticeExam = false;
-                isProctoredExam = false;
-                isOnboardingExam = false;
-            } else if (this.$('input.proctored_exam').is(':checked')) {
-                isTimeLimited = true;
-                isPracticeExam = false;
-                isProctoredExam = true;
-                isOnboardingExam = false;
-            } else if (this.$('input.practice_exam').is(':checked')) {
-                isTimeLimited = true;
-                isPracticeExam = true;
-                isProctoredExam = true;
-                isOnboardingExam = false;
-            } else if (this.$('input.onboarding_exam').is(':checked')) {
-                isTimeLimited = true;
-                isPracticeExam = false;
-                isProctoredExam = true;
-                isOnboardingExam = true;
-            }
-
             return {
                 metadata: {
-                    is_practice_exam: isPracticeExam,
-                    is_time_limited: isTimeLimited,
+                    is_practice_exam: isPracticeExamChecked,
+                    is_time_limited: !isNoSpecialExamChecked,
                     exam_review_rules: examReviewRules,
                     // We have to use the legacy field name
                     // as the Ajax handler directly populates
                     // the xBlocks fields. We will have to
                     // update this call site when we migrate
                     // seq_module.py to use 'is_proctored_exam'
-                    is_proctored_enabled: isProctoredExam,
+                    is_proctored_enabled: isProctoredExamChecked || isPracticeExamChecked || isOnboardingExamChecked,
                     default_time_limit_minutes: this.convertTimeLimitToMinutes(timeLimit),
-                    is_onboarding_exam: isOnboardingExam
+                    is_onboarding_exam: isOnboardingExamChecked
                 }
             };
         }
