@@ -5,6 +5,7 @@ import itertools
 
 from course_modes.models import CourseMode
 from course_modes.tests.factories import CourseModeFactory
+from django.test import RequestFactory
 from django.utils import timezone
 from courseware.models import DynamicUpgradeDeadlineConfiguration
 from openedx.core.djangoapps.schedules.tests.factories import ScheduleFactory
@@ -50,7 +51,7 @@ class TestAccess(CacheIsolationTestCase):
             course_upgrade_deadline = None
 
         def format_date(date):
-            return strftime_localized(date, u'%b %-d, %Y')
+            return strftime_localized(date, u'%b. %-d, %Y')
 
         enrollment = CourseEnrollmentFactory.create(
             course__start=datetime(2018, 1, 1, tzinfo=UTC),

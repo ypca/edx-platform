@@ -733,7 +733,7 @@ class TestCourseHomePageAccess(CourseHomePageTestCase):
         fake_unicode_start_time = u"üñîçø∂é_ßtå®t_tîµé"
         mock_strftime_localized.return_value = fake_unicode_start_time
         date_string = u'<span class="localized-datetime" data-format="shortDate" \
-        data-datetime="{formatted_date}" data-language="{language}">{formatted_date_localized}</span>'
+        data-datetime="{formatted_date}" data-language="{language}">{formatted_date}</span>'
         mock_get_date_string.return_value = date_string
 
         config = CourseDurationLimitConfig(
@@ -761,7 +761,7 @@ class TestCourseHomePageAccess(CourseHomePageTestCase):
         with mock.patch("openedx.features.course_duration_limits.access.get_date_string",
                         return_value=str(date_string)):
             response = self.client.get(url, HTTP_ACCEPT_LANGUAGE=language)
-            self.assertEqual(response.status_code, 500)
+            self.assertEqual(response.status_code, 404)
 
     @override_waffle_flag(COURSE_PRE_START_ACCESS_FLAG, active=True)
     @override_waffle_flag(ENABLE_COURSE_GOALS, active=True)
