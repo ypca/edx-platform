@@ -1221,6 +1221,7 @@ def create_xblock_info(xblock, data=None, metadata=None, include_ancestor_info=F
                     'enable_timed_exams': xblock.enable_timed_exams
                 })
             elif xblock.category == 'sequential':
+                import pudb; pu.db
                 rules_url = settings.PROCTORING_SETTINGS.get('LINK_URLS', {}).get('online_proctoring_rules', "")
                 supports_onboarding = does_course_support_onboarding(course.id)
 

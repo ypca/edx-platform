@@ -560,7 +560,7 @@ define(['jquery', 'backbone', 'underscore', 'gettext', 'js/views/baseview',
                 isOnboardingExam = false;
             } else if (this.$('input.onboarding_exam').is(':checked')) {
                 isTimeLimited = true;
-                isPracticeExam = true;
+                isPracticeExam = false;
                 isProctoredExam = true;
                 isOnboardingExam = true;
             }
