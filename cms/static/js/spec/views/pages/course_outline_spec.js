@@ -1077,7 +1077,8 @@ describe('CourseOutlinePage', function() {
                 is_time_limited: false,
                 exam_review_rules: '',
                 is_proctored_enabled: false,
-                default_time_limit_minutes: null
+                default_time_limit_minutes: null,
+                is_onboarding_exam: false
             }
         };
 
@@ -1622,7 +1623,7 @@ describe('CourseOutlinePage', function() {
             expect($('.field-time-limit input').val()).toBe('02:30');
         });
 
-        it('can show a saved proctored exam correctly', function() {
+        it('can show a saved onboarding exam correctly', function() {
             var mockCourseWithSpecialExamJSON = createMockCourseJSON({}, [
                 createMockSectionJSON({
                     has_changes: true,
