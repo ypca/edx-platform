@@ -1634,7 +1634,7 @@ describe('CourseOutlinePage', function() {
                     createMockSubsectionJSON({
                         has_changes: true,
                         is_time_limited: true,
-                        is_practice_exam: true,
+                        is_practice_exam: false,
                         is_proctored_exam: false,
                         default_time_limit_minutes: 150,
                         supports_onboarding: true,
