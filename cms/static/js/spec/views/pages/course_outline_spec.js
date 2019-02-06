@@ -1422,7 +1422,7 @@ describe('CourseOutlinePage', function() {
                         is_practice_exam: true,
                         is_proctored_exam: true,
                         default_time_limit_minutes: 150,
-                        supports_onboarding: true,
+                        supports_onboarding: false,
                     }, [
                     ])
                 ])
